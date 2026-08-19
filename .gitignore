@@ -1,0 +1,14 @@
+# Swift Package Manager build output. Fully regenerable, and carrying it
+# between folders is what broke `swift build -c release`: the module cache
+# still pointed at the machine path it was first built under.
+.build/
+.build-*/
+
+# The built application bundle and the archive handed to users.
+dist/
+
+# Editor and Finder leftovers.
+.idea/
+.DS_Store
+xcuserdata/
+*.xcuserstate
