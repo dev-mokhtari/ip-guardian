@@ -9,6 +9,8 @@ the change is confirmed — before they can say anything over the new connection
 
 macOS 13 or newer · Apple Silicon and Intel · 3.3 MB · no dependencies
 
+![The IP Guardian dashboard: a verified connection and one protected application](docs/dashboard.png)
+
 ---
 
 ## Who it is for
@@ -50,8 +52,11 @@ connection stays in one of up to three countries you choose. Best when your VPN
 or proxy moves between exits: a VPN left on automatic, or a proxy that answers
 from several exits at once.
 
+![Choosing the protection rule and the list of allowed countries](docs/settings.png)
+
 Whichever rule you pick, the route itself is always watched. If the VPN or proxy
-drops, your apps are closed regardless.
+drops, your apps are closed regardless. The rule is fixed once Protection starts,
+so a session cannot be loosened while it is running.
 
 ## Why you can leave your apps with it
 
@@ -108,7 +113,7 @@ for both Apple Silicon and Intel. `install.sh` builds and installs straight into
 
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).
 
 ---
 
