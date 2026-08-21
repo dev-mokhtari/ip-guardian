@@ -4,8 +4,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
-# Remove download quarantine from the source folder before Swift invokes helper tools.
-xattr -dr com.apple.quarantine "$ROOT" 2>/dev/null || true
 
 if ! command -v swift >/dev/null 2>&1; then
   echo "Swift was not found. Install Apple's Command Line Tools first:"
@@ -61,6 +59,11 @@ cp "$ROOT/Resources/AppIcon.icns" "$RESOURCES/AppIcon.icns"
 rm -rf "$RESOURCES/Flags"
 cp -R "$ROOT/Resources/Flags" "$RESOURCES/Flags"
 chmod +x "$MACOS/$EXECUTABLE"
+
+# Only what this script just produced. Clearing the whole source folder meant
+# that unpacking the repository as a zip and building it silently trusted every
+# file that came with it, which is far more than the app being built here.
+xattr -cr "$APP_DIR" 2>/dev/null || true
 
 codesign --force --deep --sign - "$APP_DIR" >/dev/null 2>&1 || true
 

@@ -7,7 +7,7 @@ using. If the VPN drops, the proxy changes, or your traffic starts leaving from
 somewhere else, the protected apps are frozen within milliseconds and closed if
 the change is confirmed — before they can say anything over the new connection.
 
-macOS 13 or newer · Apple Silicon and Intel · 3.3 MB · no dependencies
+macOS 13 or newer · Apple Silicon and Intel · 3.4 MB · no dependencies
 
 ![The IP Guardian dashboard: a verified connection and one protected application](docs/dashboard.png)
 
@@ -24,9 +24,11 @@ no longer the one you approved.
 
 1. Download `IP Guardian.zip` from the [latest release](../../releases/latest).
 2. Unzip it and drag **IP Guardian** into your Applications folder.
-3. Open it. macOS refuses the first launch because the app has no paid Apple
-   Developer signature: go to **System Settings › Privacy & Security**, press
-   **Open Anyway**, and open it again. macOS asks only once.
+3. Open it. macOS refuses the first launch and says *"IP Guardian" can't be
+   opened because Apple cannot check it for malicious software* — that is the
+   message for any app without a paid Apple Developer signature, and it is
+   expected here. Press **OK**, then go to **System Settings › Privacy &
+   Security** and press **Open Anyway**. macOS asks only once.
 
 To remove it, quit the app and drag it to the Trash.
 
@@ -108,8 +110,8 @@ bash ./build_app.sh
 ```
 
 This writes `dist/IP Guardian.app` and a shareable `dist/IP Guardian.zip`, built
-for both Apple Silicon and Intel. `install.sh` builds and installs straight into
-`~/Applications`; `uninstall.sh` removes it.
+for both Apple Silicon and Intel. Drag the app into your Applications folder the
+same way as a downloaded copy.
 
 ## License
 

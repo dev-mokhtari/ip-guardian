@@ -161,10 +161,18 @@ enum IPServiceError: LocalizedError, Sendable {
             return "Different public IP addresses were detected. Exact IP verification could not be completed."
         case .insufficientCountryConsensus(_):
             return "Country verification is temporarily unavailable."
-        case .countryDisagreement(_, _):
-            // The route is read locally and was never in doubt; naming it here
-            // sent the user looking in the wrong place.
-            return "Location services reported different countries, so the country could not be confirmed."
+        case .countryDisagreement(let values, _):
+            // Not "location services": that is the name of a macOS feature
+            // which has no part in this, and it sent the user into System
+            // Settings hunting for a switch. What happened is that one check
+            // saw the connection leaving from more than one country, which is
+            // ordinary for an exit that rotates per connection.
+            //
+            // The countries are named because they are the one thing the user
+            // can act on: a country outside the allowed list is the answer,
+            // and without it the message is a dead end. Which sources reported
+            // them stays out, as `errorDescription` and the tests require.
+            return "The connection was seen in \(CountryCode.sentence(values)) during the same check, so the country could not be confirmed."
         case .invalidResponse(_):
             return "Connection verification returned incomplete information."
         case .ipv6VerificationFailed:

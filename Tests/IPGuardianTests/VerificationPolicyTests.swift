@@ -134,4 +134,32 @@ final class VerificationPolicyTests: XCTestCase {
         XCTAssertFalse(error.userFacingDescription.contains("TLS"))
         XCTAssertTrue(error.errorDescription?.contains("Country.is") == true)
     }
+
+    /// The countries are the actionable part of a disagreement: without them
+    /// the user cannot tell which one fell outside the allowed list.
+    func testCountryDisagreementNamesTheCountriesButNotTheSources() {
+        let error = IPServiceError.countryDisagreement(
+            ["DE", "NL"],
+            "Cloudflare Trace: DE · ipapi.co: NL"
+        )
+        let message = error.userFacingDescription
+
+        XCTAssertTrue(message.contains("Germany"))
+        XCTAssertTrue(message.contains("Netherlands"))
+        XCTAssertFalse(message.contains("Cloudflare"))
+        XCTAssertFalse(message.contains("ipapi"))
+        // "Location services" is a macOS feature that plays no part in this.
+        XCTAssertFalse(message.contains("Location services"))
+    }
+
+    func testCountrySentenceJoinsThreeOrMore() {
+        XCTAssertEqual(CountryCode.sentence(["DE"]), "Germany")
+        XCTAssertEqual(CountryCode.sentence(["DE", "FI"]), "Germany and Finland")
+        XCTAssertEqual(
+            CountryCode.sentence(["DE", "FI", "NL"]),
+            "Germany, Finland, and Netherlands"
+        )
+        // "XX" names no country and must never be read as one.
+        XCTAssertEqual(CountryCode.sentence(["DE", "XX"]), "Germany")
+    }
 }

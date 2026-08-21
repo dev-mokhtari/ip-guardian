@@ -42,7 +42,19 @@ final class GuardianController: ObservableObject {
     /// where they are looking rather than in the status line above.
     @Published private(set) var applicationNotice: String?
 
-    let checkInterval: TimeInterval = 3
+    /// How often a protected connection is re-checked.
+    ///
+    /// This is not what makes the app quick: `NWPathMonitor` reports a dropped
+    /// VPN or a changed route immediately, and the apps are frozen off that,
+    /// not off this timer. What the cadence catches is the quiet case — an exit
+    /// that changes without disturbing anything local — so it decides only how
+    /// long that particular change can go unnoticed.
+    ///
+    /// Every round asks eight providers, and a provider that has started
+    /// answering 429 offers no protection at all. Five seconds rather than
+    /// three cuts the traffic by two fifths and buys back the reliability of
+    /// the answers, at the cost of two seconds on that one window.
+    let checkInterval: TimeInterval = 5
     let retryDelay: TimeInterval = 2
     let overviewRefreshInterval: TimeInterval = 10
     let maximumRetryAttempts = 3
@@ -330,13 +342,6 @@ final class GuardianController: ObservableObject {
         }
         _ = await finishTurningOff(closePausedApps: false)
         return true
-    }
-
-    func closeAppsAndTurnOffProtection() {
-        guard !isTurningOffProtection else { return }
-        Task { [weak self] in
-            _ = await self?.finishTurningOff(closePausedApps: true)
-        }
     }
 
     func closeProtectedApps() {
@@ -929,9 +934,9 @@ final class GuardianController: ObservableObject {
 
     private func beginVerification(_ request: VerificationRequest) {
         if !request.strong {
-            // The three-second cadence is measured from the start of the check.
-            // Slow checks never overlap; when one takes longer than three seconds,
-            // the next check starts as soon as the current one finishes.
+            // The cadence is measured from the start of the check. Slow checks
+            // never overlap; when one takes longer than the interval, the next
+            // check starts as soon as the current one finishes.
             nextProtectedCheckAt = Date().addingTimeInterval(checkInterval)
         }
 

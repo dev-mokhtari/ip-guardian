@@ -51,6 +51,26 @@ enum CountryCode {
         }
         return code
     }
+
+    /// Country names joined the way a sentence needs them.
+    ///
+    /// Codes reach the user only where the app has something to say about
+    /// particular countries, and "Germany and the Netherlands" is a thing a
+    /// person can act on where "DE, NL" is not. Callers pass at least two.
+    static func sentence(_ codes: [String]) -> String {
+        let names = codes.compactMap { code -> String? in
+            guard let code = resolved(code) else { return nil }
+            return Locale.current.localizedString(forRegionCode: code) ?? code
+        }
+        switch names.count {
+        case 0: return "more than one country"
+        case 1: return names[0]
+        case 2: return "\(names[0]) and \(names[1])"
+        default:
+            return names.dropLast().joined(separator: ", ")
+                + ", and \(names[names.count - 1])"
+        }
+    }
 }
 
 struct ProtectedApp: Codable, Identifiable, Hashable, Sendable {

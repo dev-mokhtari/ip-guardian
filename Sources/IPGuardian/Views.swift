@@ -167,10 +167,14 @@ struct MenuContentView: View {
                     || controller.mode == .unverified
                     || (controller.mode == .unsafe && controller.requiresManualClose)),
                    controller.hasRunningProtectedApps {
-                    Button("Close Apps", role: .destructive) {
+                    Button("Close Apps & Turn Off Protection", role: .destructive) {
                         showCloseConfirmation = true
                     }
-                    .buttonStyle(MenuDestructiveButtonStyle())
+                    // Quiet during a retry, for the same reason as on the
+                    // dashboard: the usual outcome is recovery, not danger.
+                    .buttonStyle(MenuDestructiveButtonStyle(
+                        isMuted: controller.isRetryCycleActive
+                    ))
                 }
 
                 Button("Open IP Guardian") {
@@ -191,13 +195,16 @@ struct MenuContentView: View {
         }
         .frame(width: 360)
         .background(AppTheme.window)
-        .alert("Close protected apps?", isPresented: $showCloseConfirmation) {
+        .alert(
+            "Close protected apps and turn Protection off?",
+            isPresented: $showCloseConfirmation
+        ) {
             Button("Cancel", role: .cancel) {}
-            Button("Close Apps", role: .destructive) {
+            Button("Close Apps & Turn Off", role: .destructive) {
                 controller.closeProtectedApps()
             }
         } message: {
-            Text("Apps are force closed while still paused, so they never touch the untrusted connection. Unsaved work in them is lost.")
+            Text("Apps are force closed while still paused, so they never touch the untrusted connection. Unsaved work in them is lost. Protection then ends; starting it again establishes a new trusted connection.")
         }
     }
 
@@ -419,10 +426,12 @@ private struct SidebarStatusCard: View {
 
 private enum DashboardDialog: Identifiable {
     case closeApps
+    case turnOffWhileRunning
 
     var id: Int {
         switch self {
         case .closeApps: return 1
+        case .turnOffWhileRunning: return 2
         }
     }
 }
@@ -477,11 +486,20 @@ private struct DashboardView: View {
         .background(AppTheme.window)
         .alert(item: $dialog) { value in
             switch value {
+            case .turnOffWhileRunning:
+                return Alert(
+                    title: Text("Turn Protection off?"),
+                    message: Text(unguardedApplicationsMessage(controller)),
+                    primaryButton: .default(Text("Turn Off Protection")) {
+                        endProtection(controller, confirming: $showTurnOffConfirmation)
+                    },
+                    secondaryButton: .cancel()
+                )
             case .closeApps:
                 return Alert(
-                    title: Text("Close protected apps?"),
-                    message: Text("Apps are force closed while still paused, so they never touch the untrusted connection. Unsaved work in them is lost."),
-                    primaryButton: .destructive(Text("Close Apps")) {
+                    title: Text("Close protected apps and turn Protection off?"),
+                    message: Text("Apps are force closed while still paused, so they never touch the untrusted connection. Unsaved work in them is lost. Protection then ends; starting it again establishes a new trusted connection."),
+                    primaryButton: .destructive(Text("Close Apps & Turn Off")) {
                         controller.closeProtectedApps()
                     },
                     secondaryButton: .cancel()
@@ -494,7 +512,7 @@ private struct DashboardView: View {
             titleVisibility: .visible
         ) {
             Button(closeAndTurnOffTitle, role: .destructive) {
-                controller.closeAppsAndTurnOffProtection()
+                controller.closeProtectedApps()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -613,46 +631,67 @@ private struct StatusHero: View {
                 .disabled(!controller.canStartProtection)
                 .opacity(controller.canStartProtection ? 1 : 0.55)
                 .help(controller.protectionStartRequirement ?? "Start Protection")
-        case .protected:
-            Button("Turn Off Protection") { requestTurnOff() }
-            .buttonStyle(GhostActionButtonStyle())
+        case .protected, .checking, .unverified:
+            shutdownButton
         case .unsafe:
             if controller.manualCloseIsRetryExhaustion {
                 HStack(spacing: 9) {
                     Button("Retry Again") { controller.retryAgain() }
                         .buttonStyle(PrimaryActionButtonStyle())
-                    Button("Turn Off Protection") { requestTurnOff() }
-                        .buttonStyle(GhostActionButtonStyle())
-                    if controller.hasRunningProtectedApps {
-                        Button("Close Apps") { dialog = .closeApps }
-                            .buttonStyle(DangerActionButtonStyle())
-                    }
+                    shutdownButton
                 }
-            } else if controller.requiresManualClose && controller.hasRunningProtectedApps {
-                    Button("Close Apps") { dialog = .closeApps }
-                        .buttonStyle(DangerActionButtonStyle())
             } else {
-                Button("Turn Off Protection") { requestTurnOff() }
-                .buttonStyle(GhostActionButtonStyle())
-            }
-        case .checking, .unverified:
-            HStack(spacing: 9) {
-                Button("Turn Off Protection") { requestTurnOff() }
-                .buttonStyle(GhostActionButtonStyle())
-                if controller.hasRunningProtectedApps {
-                    Button("Close Apps") { dialog = .closeApps }
-                        .buttonStyle(DangerActionButtonStyle())
-                }
+                shutdownButton
             }
         }
     }
 
-    private func requestTurnOff() {
-        Task { @MainActor in
-            if !(await controller.turnOffProtection()) {
-                showTurnOffConfirmation = true
+    /// Ending a session is one action, named after what it will actually do.
+    ///
+    /// Closing the applications and turning Protection off used to be two
+    /// buttons sitting side by side, and both of them reached
+    /// `finishTurningOff`: the pair offered a choice that did not exist, and
+    /// neither label admitted that Protection ends either way. All that really
+    /// varies is whether applications are still open to be closed.
+    @ViewBuilder
+    private var shutdownButton: some View {
+        if closesApplications {
+            // A retry usually recovers on its own, and a failed check was never
+            // dangerous. Dressing the only way out in destructive red during
+            // one pushes the user towards losing work over nothing. The button
+            // stays — with the applications frozen it is the only exit there
+            // is — but it stops asking to be pressed.
+            if controller.isRetryCycleActive {
+                Button("Close Apps & Turn Off Protection") { dialog = .closeApps }
+                    .buttonStyle(GhostActionButtonStyle())
+            } else {
+                Button("Close Apps & Turn Off Protection") { dialog = .closeApps }
+                    .buttonStyle(DangerActionButtonStyle())
             }
+        } else {
+            Button("Turn Off Protection") { requestTurnOff() }
+                .buttonStyle(GhostActionButtonStyle())
         }
+    }
+
+    /// Mirrors the guard inside `turnOffProtection()`, so the label cannot
+    /// promise something the controller then refuses to do.
+    private var closesApplications: Bool {
+        !ProtectionShutdown.mayLeaveApplicationsRunning(mode: controller.mode)
+            && controller.hasRunningProtectedApps
+    }
+
+    private func requestTurnOff() {
+        // A verified session ends without closing anything, which made it the
+        // one exit that happened in silence: the applications stay open, on a
+        // connection nobody is watching any more. Ask first, but only when
+        // something is actually left unguarded — a dialog that always appears
+        // is one the user learns to dismiss unread.
+        if controller.mode == .protected, controller.hasRunningProtectedApps {
+            dialog = .turnOffWhileRunning
+            return
+        }
+        endProtection(controller, confirming: $showTurnOffConfirmation)
     }
 
     private var heroTitle: String {
@@ -2063,20 +2102,66 @@ private struct MenuPrimaryButtonStyle: ButtonStyle {
 }
 
 private struct MenuDestructiveButtonStyle: ButtonStyle {
+    /// Drops the warning colour while the outcome is still likely to be a
+    /// recovery, leaving the action available but no longer advertised.
+    var isMuted = false
+
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
+        let tint = isMuted ? Color.primary : AppTheme.danger
+        return configuration.label
             .font(.callout.weight(.semibold))
             .frame(maxWidth: .infinity)
             .frame(height: 36)
-            .foregroundStyle(AppTheme.danger)
+            .foregroundStyle(isMuted ? AnyShapeStyle(.secondary) : AnyShapeStyle(tint))
             .background(
-                AppTheme.danger.opacity(configuration.isPressed ? 0.16 : 0.09),
+                tint.opacity(configuration.isPressed ? 0.16 : 0.09),
                 in: RoundedRectangle(cornerRadius: 9, style: .continuous)
             )
             .overlay {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .stroke(AppTheme.danger.opacity(0.30), lineWidth: 1)
+                    .stroke(tint.opacity(0.30), lineWidth: 1)
             }
+    }
+}
+
+/// Ends Protection, falling back to the confirmation sheet when applications
+/// have to be closed before it can happen.
+@MainActor
+private func endProtection(
+    _ controller: GuardianController,
+    confirming showConfirmation: Binding<Bool>
+) {
+    Task { @MainActor in
+        if !(await controller.turnOffProtection()) {
+            showConfirmation.wrappedValue = true
+        }
+    }
+}
+
+/// Names the applications rather than saying "your protected applications":
+/// recognising the app on screen is what makes the consequence land.
+@MainActor
+private func unguardedApplicationsMessage(_ controller: GuardianController) -> String {
+    let names = controller.protectedApps
+        .filter { app in
+            switch controller.runtimeState(for: app) {
+            case .running, .paused: return true
+            case .closed, .notProtected: return false
+            }
+        }
+        .map(\.name)
+    let tail = ": if this connection changes, nothing will stop them."
+    switch names.count {
+    case 0:
+        return "Protected applications keep running, but they are no longer monitored" + tail
+    case 1:
+        return "\(names[0]) keeps running, but it is no longer monitored" + tail
+    case 2:
+        return "\(names[0]) and \(names[1]) keep running, but they are no longer monitored" + tail
+    default:
+        return names.dropLast().joined(separator: ", ")
+            + ", and \(names[names.count - 1]) keep running, but they are no longer monitored"
+            + tail
     }
 }
 
